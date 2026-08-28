@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coordination-substrate"
+version = "0.1.0"
+description = "Filesystem primitives for running multiple autonomous agents against shared state"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["PyYAML>=5.4"]
+
+[project.scripts]
+cs-publish = "coordination_substrate.publisher:main"
+cs-listen = "coordination_substrate.listener:main"
+cs-lease = "coordination_substrate.lease:main"
+cs-consume = "coordination_substrate.consumption:main"
+
+[tool.setuptools]
+packages = ["coordination_substrate"]

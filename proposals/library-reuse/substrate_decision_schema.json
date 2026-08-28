@@ -1,0 +1,66 @@
+{
+  "implementation": "coordination substrate: a validated decision-layer schema (RATE / classification / waiver / disposition)",
+  "declared_properties": [
+    {"id": "P-001", "statement": "A RATE decision event carries a typed rate in {Reframe,Adapt,Terminate,Execute} and a per-objective diagnosis with a type in the pinned set and a falsification_condition; the authoritative publisher refuses a decision event missing or malforming these."},
+    {"id": "P-002", "statement": "Readiness (zero contradicted-and-open) is computed over classification alone; a row classified contradicted whose disposition names no closure evidence is open regardless of applicability or waiver."},
+    {"id": "P-003", "statement": "A waiver/exclusion is dated, cited (authority and tracking_ref), and carries an expiry; an expired waiver is refused; a waiver never removes a contradicted row from the open count."},
+    {"id": "P-004", "statement": "A disposition binds the digest of the governing rubric/order it was judged against and is staled when that digest changes."}
+  ],
+  "controls": [
+    {
+      "id": "C-001",
+      "property_ids": ["P-001"],
+      "firing_condition": "a decision event whose rate is outside the pinned set, or whose diagnosis lacks a pinned type or a falsification_condition",
+      "witness_inputs": ["rate: 'Pivot'", "diagnosis omitted while rate is Reframe", "diagnosis.type 'vibes'", "diagnosis with no falsification_condition"],
+      "permitted_inputs": ["rate Reframe with diagnosis.type invalid_measure and a falsification_condition", "rate Execute with a delayed_effect diagnosis"],
+      "expected_refusal": {"reason_code": "MALFORMED_RATE_DECISION", "decision_point": "publish_validation", "must_occur_before": ["event_install", "pointer_write"], "prohibited_side_effects": ["installing a decision event", "advancing the ledger"]},
+      "seam": {"artifact": "coordination/tools/publish_bridge_event.py", "symbol": "validate_rate_decision", "caller": "publish_bridge_event.py::publish"},
+      "verification_obligation": {"type": "executable_refusal_test", "status": "planned", "evidence_ref": null}
+    },
+    {
+      "id": "C-002",
+      "property_ids": ["P-002"],
+      "firing_condition": "a readiness computation that lets a contradicted row leave the open count via applicability or waiver without closure evidence",
+      "witness_inputs": ["a contradicted row marked applicability=non-current with a valid basis and no closure evidence, asserted ready", "a contradicted row covered by a waiver, asserted ready"],
+      "permitted_inputs": ["a contradicted row whose disposition names closure evidence (now enforced) counts closed", "a contradicted row whose disposition cites a retired authority with evidence counts closed-by-retirement"],
+      "expected_refusal": {"reason_code": "CONTRADICTED_AND_OPEN", "decision_point": "readiness_evaluation", "must_occur_before": ["ready_verdict", "release_tag"], "prohibited_side_effects": ["reporting ready with an open contradiction"]},
+      "seam": {"artifact": "coordination/tools/publish_bridge_event.py", "symbol": "compute_readiness_over_classification", "caller": "publish_bridge_event.py::readiness"},
+      "verification_obligation": {"type": "executable_refusal_test", "status": "planned", "evidence_ref": null}
+    },
+    {
+      "id": "C-003",
+      "property_ids": ["P-003"],
+      "firing_condition": "a waiver with no expiry, or an expired waiver admitted, or a waiver used to zero a contradicted-and-open count",
+      "witness_inputs": ["a waiver missing expires_at", "a waiver whose expires_at is in the past, admitted", "a waiver missing authority or tracking_ref"],
+      "permitted_inputs": ["a dated, cited, unexpired waiver that suppresses a warning but leaves the contradicted-and-open count unchanged"],
+      "expected_refusal": {"reason_code": "UNDATED_OR_EXPIRED_WAIVER", "decision_point": "waiver_validation", "must_occur_before": ["ready_verdict"], "prohibited_side_effects": ["treating a waiver as a permanent exit"]},
+      "seam": {"artifact": "coordination/tools/publish_bridge_event.py", "symbol": "validate_waiver", "caller": "publish_bridge_event.py::publish"},
+      "verification_obligation": {"type": "executable_refusal_test", "status": "planned", "evidence_ref": null}
+    },
+    {
+      "id": "C-004",
+      "property_ids": ["P-004"],
+      "firing_condition": "a disposition that does not bind its governing rubric/order digest, or a disposition treated as current after that digest changed",
+      "witness_inputs": ["a disposition with no governing_digest field", "a disposition whose governing_digest no longer matches the current rubric", "a rubric edit that leaves dependent dispositions marked current"],
+      "permitted_inputs": ["a disposition binding governing_digest equal to the current rubric digest, marked current"],
+      "expected_refusal": {"reason_code": "STALE_GOVERNING_DIGEST", "decision_point": "disposition_validation", "must_occur_before": ["disposition_treated_as_current"], "prohibited_side_effects": ["carrying a disposition as current against a moved standard"]},
+      "seam": {"artifact": "coordination/tools/publish_bridge_event.py", "symbol": "bind_and_stale_on_governing_digest", "caller": "publish_bridge_event.py::disposition"},
+      "verification_obligation": {"type": "executable_refusal_test", "status": "planned", "evidence_ref": null}
+    }
+  ],
+  "residual_unknowns": [
+    {"id": "U-001", "statement": "Whether a diagnosis is TRUE is undecidable; the schema validates its shape and consistency, never its correctness.", "reversible_default": "emit diagnosis_truth: not_established and route the underdetermined case to discriminate, never validate truth", "disconfirming_signal": "a downstream reader treats a schema-valid diagnosis as an established world-claim"},
+    {"id": "U-002", "statement": "Which implementation is authoritative is unresolved: the 149-test library (/srv/coordination-substrate) and the live tool (coordination/tools/publish_bridge_event.py) are divergent, and the fleet runs the latter.", "reversible_default": "land this schema in the tool the fleet actually runs, and mark the library reference-only until reconciled", "disconfirming_signal": "the schema is added to the library while the fleet keeps publishing through the unvalidated tool"},
+    {"id": "U-003", "statement": "Completeness of the classified claim set is a discovery claim, not decidable by the schema.", "reversible_default": "report coverage NOT ESTABLISHED; the meta-gate self-enforces new gates forward", "disconfirming_signal": "a known must/never appears with no row"}
+  ],
+  "challenge_record": {
+    "challenger": {"principal": "agent:james", "attestation_ref": null},
+    "attacks": [
+      {"id": "A-001", "target": "C-002", "attempt": "classify a claim contradicted with current-state evidence, then record applicability non-current with a compliant basis so it leaves the readiness count with nothing closed (James C1)", "oracle": "readiness counts the row as open because its disposition names no closure evidence, independent of applicability", "mechanizable": true, "disposition": {"status": "forced_change", "rationale": "readiness is computed over classification alone; applicability and waiver cannot remove a contradicted row from the open count"}},
+      {"id": "A-002", "target": "C-003", "attempt": "use a waiver as a permanent exit by omitting expiry, or reuse an expired one", "oracle": "a waiver missing or past expires_at is refused; an unexpired waiver suppresses a warning but does not change the open count", "mechanizable": true, "disposition": {"status": "forced_change", "rationale": "waivers are dated, cited, and expiring, and never zero the contradicted-and-open count"}},
+      {"id": "A-003", "target": "C-004", "attempt": "correct the rubric after a disposition is published so the disposition stays 'current' against a moved standard (James C4)", "oracle": "changing the governing rubric digest stales every dependent disposition", "mechanizable": true, "disposition": {"status": "forced_change", "rationale": "the disposition binds the governing digest and stales on its change; this closes the definition-of-passing staleness gap at the substrate"}},
+      {"id": "A-004", "target": "C-001", "attempt": "publish a decision with a well-formed envelope but a diagnosis that is a bare enum tag with no falsification_condition", "oracle": "the validator refuses a diagnosis without a pinned type and a falsification_condition", "disposition": {"status": "refuted", "rationale": "C-001 requires the pinned type and a falsifier; a bare tag is refused, matching the assess discipline"}},
+      {"id": "A-005", "target": "coverage", "attempt": "land the schema in the library while the fleet keeps publishing through the unvalidated tool, so nothing changes for the fleet", "oracle": "the enforced seam is the implementation the fleet actually runs", "disposition": {"status": "forced_change", "rationale": "U-002 makes the seam the live tool; a library-only change is recorded as not discharging the fleet-facing obligation"}}
+    ]
+  }
+}

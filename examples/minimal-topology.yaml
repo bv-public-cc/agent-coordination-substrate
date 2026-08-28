@@ -1,0 +1,33 @@
+# The smallest useful bridge: one orchestrator, one agent.
+#
+# Everything not shown has a default. Copy to <root>/coordination/topology.yaml.
+
+schema_version: 1
+
+orchestrator: boss
+orchestrator_events_dir: bridge/events
+ledger: state.yaml
+lease_dir: bridge/locks/mutating.lock
+
+defaults:
+  events_dir: bridge/events
+  listeners_dir: bridge/listeners
+
+roles:
+  worker:
+    inbound_pointer: bridge/boss-to-worker.yaml
+    outbound_pointer: bridge/worker-to-boss.yaml
+    holds_mutating_lease: true
+    active_work:
+      task_path: [execution, active_task]
+
+# Directories you must create before first use:
+#   bridge/events  bridge/listeners  bridge/locks
+#
+# Omitted and defaulted:
+#   global_sequence_lock  -> bridge/locks/orchestrator-global-sequence
+#   lease_seconds         -> 600
+#   ack_timeout_seconds   -> 300
+#   heartbeat_stale_seconds -> 600
+#   time_authority_epoch  -> none (no duration gate)
+#   reference_intents     -> [immutable_ref, snapshot_at_publication]

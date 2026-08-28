@@ -1,0 +1,30 @@
+# Substrate CI: the suite is stdlib-only apart from PyYAML, so this stays cheap.
+stages: [test]
+
+default:
+  image: nexus.internal-domain.scrubbed:5000/ci/coordination-substrate-python@sha256:67d88b8ef4cb62119a164c0f75ede3e89a3ce01fd2294e0320ccb149b3f552eb
+
+variables:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+.test-template: &test
+  stage: test
+  script:
+    - make lint
+    - make test
+    - make demo
+
+test:3.12:
+  <<: *test
+
+# Verify this repository's own ledger, if one is ever added under coordination/.
+# Skipped cleanly when no topology exists, so it never blocks a normal change.
+integrity:
+  stage: test
+  script:
+    - |
+      if [ -f coordination/topology.yaml ]; then
+        python -m coordination_substrate.integrity --root . --strict
+      else
+        echo "no coordination/topology.yaml in this repository; nothing to verify"
+      fi

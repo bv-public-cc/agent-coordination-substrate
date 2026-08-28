@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coordination-substrate/schemas/decision.schema.json",
+  "title": "RATE decision event",
+  "description": "Shape of a typed assessment/decision event for a coordination bridge. Harvested and generalized. This schema validates STRUCTURE ONLY. It cannot establish that a diagnosis is true, that a readiness count is correct, or that a bound digest is still current — those are algorithmic obligations enforced in code, not shape. See schemas/README.md. Role names, the pinned diagnosis vocabulary, and objective identifiers are project policy supplied by the deployment, not fixed here.",
+  "type": "object",
+  "required": [
+    "event",
+    "decision"
+  ],
+  "properties": {
+    "event": {
+      "const": "rate_decision",
+      "description": "Discriminates this envelope from other bridge events."
+    },
+    "writer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Emitting role. The value is topology policy; the field is required so authority is attributable."
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "rate",
+        "objectives"
+      ],
+      "properties": {
+        "rate": {
+          "$ref": "#/$defs/rate"
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Per-objective diagnosis. A single global diagnosis is refused: assessment is per objective.",
+          "items": {
+            "$ref": "#/$defs/objectiveDiagnosis"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "rate": {
+      "type": "string",
+      "enum": [
+        "Reframe",
+        "Adapt",
+        "Terminate",
+        "Execute"
+      ],
+      "description": "R: wrong problem. A: right problem, wrong approach. T: met, or provably won't be. E: on track."
+    },
+    "objectiveDiagnosis": {
+      "type": "object",
+      "required": [
+        "objective_id",
+        "diagnosis"
+      ],
+      "properties": {
+        "objective_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "diagnosis": {
+          "$ref": "#/$defs/diagnosis"
+        }
+      },
+      "additionalProperties": true
+    },
+    "diagnosis": {
+      "type": "object",
+      "required": [
+        "type",
+        "falsification_condition"
+      ],
+      "description": "A diagnosis MUST name a type and a falsifier. A bare enum tag with no way to be proven wrong is refused — a claim that cannot fail is not a diagnosis.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One value from the deployment's pinned diagnosis vocabulary. The vocabulary is project policy; validate closed-set membership in code or in a project overlay of this schema. Grounded examples from the source record: 'invalid_measure', 'delayed_effect'."
+        },
+        "falsification_condition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A concrete, observable condition under which this diagnosis would be wrong."
+        },
+        "diagnosis_truth": {
+          "type": "string",
+          "enum": [
+            "not_established"
+          ],
+          "default": "not_established",
+          "description": "Whether the diagnosis is TRUE is undecidable by shape. It is always not_established here; an underdetermined case is routed to discrimination, never validated as truth."
+        }
+      },
+      "additionalProperties": true
+    },
+    "waiver": {
+      "type": "object",
+      "description": "Optional. A waiver is DATED, CITED, and EXPIRING. It may suppress a warning but never removes a contradicted-and-open row from the readiness count (that suppression is enforced in code, not here). An expired waiver must be refused by the reader.",
+      "required": [
+        "authority",
+        "tracking_ref",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tracking_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    },
+    "disposition": {
+      "type": "object",
+      "description": "A disposition binds the digest of the governing rubric/order it was judged against. When that digest changes the disposition is stale — freshness is enforced in code by comparing governing_digest to the current standard; this schema only requires the binding to be present.",
+      "required": [
+        "governing_digest"
+      ],
+      "properties": {
+        "governing_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 of the rubric/order this disposition was judged against."
+        },
+        "closure_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "References to the evidence that closes a contradicted row. A contradicted row whose disposition names no closure evidence is OPEN regardless of applicability or waiver."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
